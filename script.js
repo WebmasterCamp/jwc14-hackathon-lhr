@@ -55,8 +55,8 @@ function showToast(msg, duration = 2500) {
 
 // ── PAGE NAVIGATION ─────────────────────────────────────────
 function showPage(key) {
-  const pages = { cam: 'pageCam', gallery: 'pageGallery', recap: 'pageRecap' };
-  const navs  = { cam: 'navCamera', gallery: 'navGallery', recap: 'navRecap' };
+  const pages = { cam: 'pageCam', gallery: 'pageGallery' };
+  const navs  = { cam: 'navCamera', gallery: 'navGallery' };
 
   Object.values(pages).forEach(id => document.getElementById(id).classList.remove('active'));
   document.getElementById(pages[key]).classList.add('active');
@@ -69,7 +69,6 @@ function showPage(key) {
 
 document.getElementById('navCamera').addEventListener('click',  () => showPage('cam'));
 document.getElementById('navGallery').addEventListener('click', () => showPage('gallery'));
-document.getElementById('navRecap').addEventListener('click',   () => showPage('recap'));
 
 // ── CAMERA ──────────────────────────────────────────────────
 async function startCamera() {
@@ -117,15 +116,18 @@ snapBtn.addEventListener('click', async () => {
     }
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
     tagSlots[tagNextSlot] = dataUrl;
-    renderTagGrid();
     tagNextSlot++;
+    renderTagGrid();
+
     if (tagNextSlot >= 9) {
-      showToast('🎉 ครบ 9 รูปแล้ว!');
+      // merge all 9 into one image and save
       snapBtn.disabled = true;
+      await mergeAndSaveTagGrid();
     }
     resetShutter();
     return;
   }
+
 
   // ── NORMAL MODE: save to storage ───────────────────────
   canvas.toBlob(async (blob) => {
@@ -211,6 +213,80 @@ function renderTagGrid() {
     }
     tagGridOverlay.appendChild(cell);
   }
+}
+
+async function mergeAndSaveTagGrid() {
+  // draw 9 images into a 3x3 grid on a single canvas
+  const SIZE = 900;          // output canvas size (square)
+  const CELL = SIZE / 3;     // each cell = 300px
+  const GAP  = 4;            // gap between cells in px
+
+  const mergeCanvas = document.createElement('canvas');
+  mergeCanvas.width  = SIZE;
+  mergeCanvas.height = SIZE;
+  const mCtx = mergeCanvas.getContext('2d');
+  mCtx.fillStyle = '#1a1008';
+  mCtx.fillRect(0, 0, SIZE, SIZE);
+
+  // load all 9 images
+  const loadImg = src => new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.src = src;
+  });
+
+  const imgs = await Promise.all(tagSlots.map(loadImg));
+
+  imgs.forEach((img, i) => {
+    const col = i % 3;
+    const row = Math.floor(i / 3);
+    const x   = col * CELL + (col > 0 ? GAP : 0);
+    const y   = row * CELL + (row > 0 ? GAP : 0);
+    const w   = CELL - (col > 0 ? GAP : 0);
+    const h   = CELL - (row > 0 ? GAP : 0);
+    // cover-fit the image into the cell
+    const scale = Math.max(w / img.width, h / img.height);
+    const sw    = w / scale;
+    const sh    = h / scale;
+    const sx    = (img.width  - sw) / 2;
+    const sy    = (img.height - sh) / 2;
+    mCtx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+  });
+
+  // save merged image
+  const now      = new Date().toISOString();
+  const fileName = `tag_${Date.now()}.jpg`;
+
+  mergeCanvas.toBlob(async (blob) => {
+    if (!blob) { showToast('❌ รวมรูปไม่สำเร็จ'); return; }
+
+    if (db) {
+      try {
+        const { error: upErr } = await db.storage.from('memory-files')
+          .upload(fileName, blob, { contentType: 'image/jpeg', upsert: false });
+        if (upErr) throw upErr;
+        const { data: urlData } = db.storage.from('memory-files').getPublicUrl(fileName);
+        const { error: dbErr } = await db.from('memories')
+          .insert([{ image_url: urlData.publicUrl, file_name: fileName, created_at: now }]);
+        if (dbErr) throw dbErr;
+        showToast('🎉 บันทึก 9 รูปเป็นเฟรมเดียวแล้ว!');
+        loadCameraStrip();
+      } catch (err) {
+        showToast('❌ บันทึกไม่สำเร็จ: ' + err.message);
+      }
+    } else {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const stored = JSON.parse(localStorage.getItem('capturow_memories') || '[]');
+        stored.unshift({ image_url: reader.result, created_at: now });
+        if (stored.length > 50) stored.length = 50;
+        localStorage.setItem('capturow_memories', JSON.stringify(stored));
+        showToast('🎉 บันทึก 9 รูปเป็นเฟรมเดียวแล้ว!');
+        loadCameraStrip();
+      };
+      reader.readAsDataURL(blob);
+    }
+  }, 'image/jpeg', 0.92);
 }
 
 // ── CAMERA STRIP (2 latest) ──────────────────────────────────
