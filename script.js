@@ -206,7 +206,7 @@ function exitTagMode() {
   tagNextSlot = 0;
 
   // restore pill label
-  pillLabel.textContent = 'guest';
+  pillLabel.textContent = 'quest';
 
   // swap back button → profile icon
   tagBackBtn.classList.remove('visible');
@@ -407,7 +407,7 @@ async function loadGalleryPage() {
 
   if (allItems.length === 0) {
     photoGrid.innerHTML = `
-      <div class="gallery-empty" style="grid-column:span 3">
+      <div class="gallery-empty" style="grid-column:span 4">
         <svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2" style="opacity:0.3">
           <path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Z"/>
         </svg>
@@ -440,7 +440,7 @@ async function loadGalleryPage() {
       cell.appendChild(dots);
     }
 
-    cell.addEventListener('click', () => window.open(item.image_url, '_blank'));
+    cell.addEventListener('click', () => openLightbox(item.image_url));
     photoGrid.appendChild(cell);
   });
 }
@@ -645,39 +645,106 @@ function buildCollage(imgs, monthName) {
   return capsuleCanvas.toDataURL('image/jpeg', 0.92);
 }
 
-// save collage to localStorage / Supabase
-capsuleSaveBtn.addEventListener('click', async () => {
+// save collage — download as .jpg
+capsuleSaveBtn.addEventListener('click', () => {
   if (!capsuleDataUrl) { showToast('ยังไม่มีรูปให้บันทึก'); return; }
-  const now      = new Date().toISOString();
-  const fileName = `capsule_${Date.now()}.jpg`;
-
-  const blob = await (await fetch(capsuleDataUrl)).blob();
-
-  if (db) {
-    try {
-      const { error: upErr } = await db.storage.from('memory-files')
-        .upload(fileName, blob, { contentType: 'image/jpeg', upsert: false });
-      if (upErr) throw upErr;
-      const { data: urlData } = db.storage.from('memory-files').getPublicUrl(fileName);
-      await db.from('memories').insert([{ image_url: urlData.publicUrl, file_name: fileName, created_at: now }]);
-      showToast('💊 บันทึก Capsule แล้ว!');
-    } catch(e) { showToast('❌ ' + e.message); }
-  } else {
-    const stored = JSON.parse(localStorage.getItem('capturow_memories') || '[]');
-    stored.unshift({ image_url: capsuleDataUrl, created_at: now });
-    if (stored.length > 50) stored.length = 50;
-    localStorage.setItem('capturow_memories', JSON.stringify(stored));
-    showToast('💊 บันทึก Capsule แล้ว!');
-  }
+  const mn   = MONTH_NAMES[currentDate.getMonth()];
+  const yr   = currentDate.getFullYear();
+  const link = document.createElement('a');
+  link.href     = capsuleDataUrl;
+  link.download = `capsule_${mn}_${yr}.jpg`;
+  link.click();
+  showToast('💊 บันทึกรูปแล้ว!');
 });
 
-// open collage in new tab
-capsuleOpenBtn.addEventListener('click', () => {
-  if (!capsuleDataUrl) { showToast('ยังไม่มีรูปให้เปิด'); return; }
+// share collage — Web Share API on mobile, fallback open tab on desktop
+capsuleOpenBtn.addEventListener('click', async () => {
+  if (!capsuleDataUrl) { showToast('ยังไม่มีรูปให้แชร์'); return; }
+
+  if (navigator.share && navigator.canShare) {
+    try {
+      // convert dataURL → File
+      const res  = await fetch(capsuleDataUrl);
+      const blob = await res.blob();
+      const mn   = MONTH_NAMES[currentDate.getMonth()];
+      const yr   = currentDate.getFullYear();
+      const file = new File([blob], `capsule_${mn}_${yr}.jpg`, { type: 'image/jpeg' });
+
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: `Capsule ${mn} ${yr}`,
+        });
+        return;
+      }
+    } catch(e) {
+      if (e.name !== 'AbortError') showToast('แชร์ไม่สำเร็จ');
+      return;
+    }
+  }
+  // fallback: open in new tab
   window.open(capsuleDataUrl, '_blank');
 });
 
-// ── GUEST MODAL ──────────────────────────────────────────────
+// ── LIGHTBOX ─────────────────────────────────────────────────
+const lightbox      = document.getElementById('lightbox');
+const lightboxImg   = document.getElementById('lightboxImg');
+const lightboxClose = document.getElementById('lightboxClose');
+const lightboxSave  = document.getElementById('lightboxSave');
+const lightboxShare = document.getElementById('lightboxShare');
+
+function openLightbox(url) {
+  lightboxImg.src = url;
+  lightbox.classList.add('open');
+}
+
+lightboxClose.addEventListener('click', () => {
+  lightbox.classList.remove('open');
+  lightboxImg.src = '';
+});
+
+// close on backdrop tap
+lightbox.addEventListener('click', (e) => {
+  if (e.target === lightbox) {
+    lightbox.classList.remove('open');
+    lightboxImg.src = '';
+  }
+});
+
+// download
+lightboxSave.addEventListener('click', () => {
+  const url = lightboxImg.src;
+  if (!url) return;
+  const link = document.createElement('a');
+  link.href     = url;
+  link.download = `memory_${Date.now()}.jpg`;
+  link.click();
+  showToast('📥 บันทึกรูปแล้ว!');
+});
+
+// share
+lightboxShare.addEventListener('click', async () => {
+  const url = lightboxImg.src;
+  if (!url) return;
+
+  if (navigator.share && navigator.canShare) {
+    try {
+      const res  = await fetch(url);
+      const blob = await res.blob();
+      const file = new File([blob], `memory_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file] });
+        return;
+      }
+    } catch(e) {
+      if (e.name !== 'AbortError') showToast('แชร์ไม่สำเร็จ');
+      return;
+    }
+  }
+  window.open(url, '_blank');
+});
+
+// ── QUEST MODAL ──────────────────────────────────────────────
 const guestBtn   = document.getElementById('guestBtn');
 const guestModal = document.getElementById('guestModal');
 
