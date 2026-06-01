@@ -141,42 +141,21 @@ snapBtn.addEventListener('click', async () => {
   }
 
 
-  // ── NORMAL MODE: save to storage ───────────────────────
+  // ── NORMAL MODE: save to localStorage ───────────────────────
   canvas.toBlob(async (blob) => {
     if (!blob) { showToast('❌ ดึงรูปภาพไม่ได้'); resetShutter(); return; }
 
-    const now      = new Date().toISOString();
-    const fileName = `memory_${Date.now()}.jpg`;
-
-    if (db) {
-      try {
-        const { error: upErr } = await db.storage.from('memory-files')
-          .upload(fileName, blob, { contentType: 'image/jpeg', upsert: false });
-        if (upErr) throw upErr;
-
-        const { data: urlData } = db.storage.from('memory-files').getPublicUrl(fileName);
-
-        const { error: dbErr } = await db.from('memories')
-          .insert([{ image_url: urlData.publicUrl, file_name: fileName, created_at: now }]);
-        if (dbErr) throw dbErr;
-
-        showToast('✨ บันทึกความทรงจำแล้ว!');
-        loadCameraStrip();
-      } catch (err) {
-        showToast('❌ บันทึกไม่สำเร็จ: ' + err.message);
-      }
-    } else {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const stored = JSON.parse(localStorage.getItem('capturow_memories') || '[]');
-        stored.unshift({ image_url: reader.result, created_at: now });
-        if (stored.length > 50) stored.length = 50;
-        localStorage.setItem('capturow_memories', JSON.stringify(stored));
-        showToast('✨ บันทึกแล้ว!');
-        loadCameraStrip();
-      };
-      reader.readAsDataURL(blob);
-    }
+    const now = new Date().toISOString();
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const stored = JSON.parse(localStorage.getItem('capturow_memories') || '[]');
+      stored.unshift({ image_url: reader.result, created_at: now });
+      if (stored.length > 50) stored.length = 50;
+      localStorage.setItem('capturow_memories', JSON.stringify(stored));
+      showToast('✨ บันทึกแล้ว!');
+      loadCameraStrip();
+    };
+    reader.readAsDataURL(blob);
     resetShutter();
   }, 'image/jpeg', 0.92);
 });
@@ -292,54 +271,28 @@ async function mergeAndSaveTagGrid() {
     mCtx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
   });
 
-  // save merged image
-  const now      = new Date().toISOString();
-  const fileName = `tag_${Date.now()}.jpg`;
+  // save merged image to localStorage
+  const now = new Date().toISOString();
 
   mergeCanvas.toBlob(async (blob) => {
     if (!blob) { showToast('❌ รวมรูปไม่สำเร็จ'); return; }
 
-    if (db) {
-      try {
-        const { error: upErr } = await db.storage.from('memory-files')
-          .upload(fileName, blob, { contentType: 'image/jpeg', upsert: false });
-        if (upErr) throw upErr;
-        const { data: urlData } = db.storage.from('memory-files').getPublicUrl(fileName);
-        const { error: dbErr } = await db.from('memories')
-          .insert([{ image_url: urlData.publicUrl, file_name: fileName, created_at: now }]);
-        if (dbErr) throw dbErr;
-        showToast('🎉 บันทึก 9 รูปเป็นเฟรมเดียวแล้ว!');
-        loadCameraStrip();
-      } catch (err) {
-        showToast('❌ บันทึกไม่สำเร็จ: ' + err.message);
-      }
-    } else {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const stored = JSON.parse(localStorage.getItem('capturow_memories') || '[]');
-        stored.unshift({ image_url: reader.result, created_at: now });
-        if (stored.length > 50) stored.length = 50;
-        localStorage.setItem('capturow_memories', JSON.stringify(stored));
-        showToast('🎉 บันทึก 9 รูปเป็นเฟรมเดียวแล้ว!');
-        loadCameraStrip();
-      };
-      reader.readAsDataURL(blob);
-    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const stored = JSON.parse(localStorage.getItem('capturow_memories') || '[]');
+      stored.unshift({ image_url: reader.result, created_at: now });
+      if (stored.length > 50) stored.length = 50;
+      localStorage.setItem('capturow_memories', JSON.stringify(stored));
+      showToast('🎉 บันทึก 9 รูปเป็นเฟรมเดียวแล้ว!');
+      loadCameraStrip();
+    };
+    reader.readAsDataURL(blob);
   }, 'image/jpeg', 0.92);
 }
 
 // ── CAMERA STRIP (2 latest) ──────────────────────────────────
 async function loadCameraStrip() {
-  let items = [];
-  if (db) {
-    try {
-      const { data } = await db.from('memories').select('image_url,created_at')
-        .order('created_at', { ascending: false }).limit(2);
-      if (data) items = data;
-    } catch(e) {}
-  } else {
-    items = JSON.parse(localStorage.getItem('capturow_memories') || '[]').slice(0, 2);
-  }
+  const items = JSON.parse(localStorage.getItem('capturow_memories') || '[]').slice(0, 2);
 
   const slots = [items[0] || null, items[1] || null];
   galleryStrip.innerHTML = '';
@@ -393,25 +346,12 @@ async function loadGalleryPage() {
   updateMonthLabel();
   photoGrid.innerHTML = '<div style="grid-column:span 3;text-align:center;padding:40px 0;color:rgba(255,255,255,0.2);font-family:Mitr,sans-serif;font-size:13px;">กำลังโหลด...</div>';
 
-  let allItems = [];
-
-  if (db) {
-    try {
-      const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString();
-      const end   = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0, 23, 59, 59).toISOString();
-      const { data } = await db.from('memories').select('image_url,created_at')
-        .gte('created_at', start).lte('created_at', end)
-        .order('created_at', { ascending: false });
-      if (data) allItems = data;
-    } catch(e) {}
-  } else {
-    const stored = JSON.parse(localStorage.getItem('capturow_memories') || '[]');
-    allItems = stored.filter(item => {
-      const d = new Date(item.created_at);
-      return d.getFullYear() === currentDate.getFullYear() &&
-             d.getMonth()    === currentDate.getMonth();
-    });
-  }
+  const stored = JSON.parse(localStorage.getItem('capturow_memories') || '[]');
+  const allItems = stored.filter(item => {
+    const d = new Date(item.created_at);
+    return d.getFullYear() === currentDate.getFullYear() &&
+           d.getMonth()    === currentDate.getMonth();
+  });
 
   photoGrid.innerHTML = '';
 
@@ -480,24 +420,12 @@ async function showCapsulePage() {
   capsuleMonthText.textContent = mn;
 
   // load photos for current month
-  let items = [];
-  if (db) {
-    try {
-      const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString();
-      const end   = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0, 23, 59, 59).toISOString();
-      const { data } = await db.from('memories').select('image_url,created_at')
-        .gte('created_at', start).lte('created_at', end)
-        .order('created_at', { ascending: true });
-      if (data) items = data;
-    } catch(e) {}
-  } else {
-    const stored = JSON.parse(localStorage.getItem('capturow_memories') || '[]');
-    items = stored.filter(item => {
-      const d = new Date(item.created_at);
-      return d.getFullYear() === currentDate.getFullYear() &&
-             d.getMonth()    === currentDate.getMonth();
-    }).reverse();
-  }
+  const stored = JSON.parse(localStorage.getItem('capturow_memories') || '[]');
+  const items = stored.filter(item => {
+    const d = new Date(item.created_at);
+    return d.getFullYear() === currentDate.getFullYear() &&
+           d.getMonth()    === currentDate.getMonth();
+  }).reverse();
 
   // date range label
   if (items.length > 0) {

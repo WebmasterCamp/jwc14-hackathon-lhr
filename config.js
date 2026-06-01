@@ -16,5 +16,5 @@
 
 const ENV = {
   SUPABASE_URL:      'https://rldyhzswgkahjnzysmsk.supabase.co',
-  SUPABASE_ANON_KEY: 'sb_secret_V5FZfAqCUGeNIChkhbkW5A_55oav4vd'
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsZHloenN3Z2thaGpuenlzbXNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyODM4NjAsImV4cCI6MjA5NTg1OTg2MH0.TdaGwAwnWih_JOuqPpS3_km8Z450idZyaKs-WdRHQRQ'
 };
