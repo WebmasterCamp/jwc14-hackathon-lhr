@@ -24,7 +24,7 @@ const camPlaceholder  = document.getElementById('camPlaceholder');
 const startCamOverlay = document.getElementById('startCamOverlay');
 const camStatus       = document.getElementById('camStatus');
 const galleryStrip    = document.getElementById('galleryStrip');
-const colorHuntBtn    = document.getElementById('colorHuntBtn');
+const colorHuntBtn    = null;
 const toastEl         = document.getElementById('toast');
 const photoGrid       = document.getElementById('photoGrid');
 const monthLabel      = document.getElementById('monthLabel');
@@ -146,8 +146,7 @@ function resetShutter() {
   snapBtn.disabled = false;
 }
 
-// ── COLOR HUNT → navigate to Gallery ────────────────────────
-colorHuntBtn.addEventListener('click', () => showPage('gallery'));
+// ── COLOR HUNT (removed) ─────────────────────────────────────
 
 // ── CAMERA STRIP (2 latest) ──────────────────────────────────
 async function loadCameraStrip() {
