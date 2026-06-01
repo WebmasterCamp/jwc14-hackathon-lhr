@@ -3,14 +3,24 @@
 // ============================================================
 
 // ── SUPABASE CONFIG ─────────────────────────────────────────
-const SUPABASE_URL      = 'https://YOUR_PROJECT_ID.supabase.co';
-const SUPABASE_ANON_KEY = 'YOUR_ANON_PUBLIC_KEY_HERE';
-const SUPABASE_READY    = !SUPABASE_URL.includes('YOUR_PROJECT_ID');
+const SUPABASE_URL      = (typeof ENV !== 'undefined') ? ENV.SUPABASE_URL      : '';
+const SUPABASE_ANON_KEY = (typeof ENV !== 'undefined') ? ENV.SUPABASE_ANON_KEY : '';
+const SUPABASE_READY    = SUPABASE_URL.length > 0 && !SUPABASE_URL.includes('YOUR_PROJECT_ID');
 
 let db = null;
 try {
   if (SUPABASE_READY && typeof supabase !== 'undefined') {
     db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // ── CONNECTION TEST ──────────────────────────────────────
+    db.from('memories').select('id').limit(1).then(({ data, error }) => {
+      if (error) {
+        console.error('❌ Supabase connect failed:', error.message);
+      } else {
+        console.log('✅ Supabase connected! memories table reachable.');
+      }
+    });
+  } else {
+    console.warn('⚠️ Supabase not configured — using localStorage');
   }
 } catch(e) { console.warn('Supabase init failed, using localStorage', e); }
 

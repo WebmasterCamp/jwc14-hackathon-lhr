@@ -290,8 +290,9 @@
 
   <!-- PAGE 1: CAMERA -->
   <div class="page active" id="pageCam">
-    <div class="top-bar">
-      <span class="page-pill" id="guestBtn" style="cursor:pointer;">quest</span>
+    <div class="top-bar" style="position:relative;">
+      <div style="width:40px;"></div>
+      <span class="page-pill" id="guestBtn" style="cursor:pointer; position:absolute; left:50%; transform:translateX(-50%);">quest</span>
       <div class="profile-btn" id="profileIcon" style="pointer-events:none; cursor:default;">
         <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
           <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/>
@@ -477,6 +478,7 @@
 </div>
 <canvas id="canvas" style="display:none;"></canvas>
 <div class="toast" id="toast"></div>
+<script src="config.js"></script>
 <script src="script.js"></script>
 </body>
 </html>
