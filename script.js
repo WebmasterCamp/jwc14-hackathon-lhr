@@ -33,6 +33,8 @@ const monthFwd        = document.getElementById('monthFwd');
 const capsuleBtn      = document.getElementById('capsuleBtn');
 const tagGridOverlay  = document.getElementById('tagGridOverlay');
 const pillLabel       = document.getElementById('guestBtn'); // the pill span
+const profileIcon     = document.getElementById('profileIcon');
+const tagBackBtn      = document.getElementById('tagBackBtn');
 
 // ── STATE ───────────────────────────────────────────────────
 let stream      = null;
@@ -186,6 +188,10 @@ function enterTagMode(tagName) {
   // update pill label
   pillLabel.textContent = tagName;
 
+  // swap profile icon → back button
+  profileIcon.style.display = 'none';
+  tagBackBtn.classList.add('visible');
+
   // show grid overlay
   tagGridOverlay.classList.add('active');
   renderTagGrid();
@@ -193,6 +199,29 @@ function enterTagMode(tagName) {
   // enable shutter if camera is live
   if (stream) snapBtn.disabled = false;
 }
+
+function exitTagMode() {
+  tagMode     = false;
+  tagSlots    = [];
+  tagNextSlot = 0;
+
+  // restore pill label
+  pillLabel.textContent = 'guest';
+
+  // swap back button → profile icon
+  tagBackBtn.classList.remove('visible');
+  profileIcon.style.display = '';
+
+  // hide grid overlay
+  tagGridOverlay.classList.remove('active');
+  tagGridOverlay.innerHTML = '';
+
+  // re-enable shutter if camera is live
+  if (stream) snapBtn.disabled = false;
+}
+
+// back button handler
+tagBackBtn.addEventListener('click', exitTagMode);
 
 function renderTagGrid() {
   tagGridOverlay.innerHTML = '';
@@ -416,7 +445,237 @@ async function loadGalleryPage() {
   });
 }
 
-capsuleBtn.addEventListener('click', () => showToast('💊 Capsule — coming soon!'));
+capsuleBtn.addEventListener('click', () => showCapsulePage());
+
+// ── CAPSULE PAGE ─────────────────────────────────────────────
+const capsuleCanvas    = document.getElementById('capsuleCanvas');
+const capsuleMonthText = document.getElementById('capsuleMonthText');
+const capsuleDateRange = document.getElementById('capsuleDateRange');
+const capsuleBackBtn   = document.getElementById('capsuleBackBtn');
+const capsuleSaveBtn   = document.getElementById('capsuleSaveBtn');
+const capsuleOpenBtn   = document.getElementById('capsuleOpenBtn');
+
+let capsuleDataUrl = null; // holds the generated collage dataURL
+
+capsuleBackBtn.addEventListener('click', () => showPage('gallery'));
+
+async function showCapsulePage() {
+  // switch to capsule page (no nav highlight needed)
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('pageCapsule').classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+
+  // set header info
+  const mn = MONTH_NAMES[currentDate.getMonth()];
+  capsuleMonthText.textContent = mn;
+
+  // load photos for current month
+  let items = [];
+  if (db) {
+    try {
+      const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString();
+      const end   = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0, 23, 59, 59).toISOString();
+      const { data } = await db.from('memories').select('image_url,created_at')
+        .gte('created_at', start).lte('created_at', end)
+        .order('created_at', { ascending: true });
+      if (data) items = data;
+    } catch(e) {}
+  } else {
+    const stored = JSON.parse(localStorage.getItem('capturow_memories') || '[]');
+    items = stored.filter(item => {
+      const d = new Date(item.created_at);
+      return d.getFullYear() === currentDate.getFullYear() &&
+             d.getMonth()    === currentDate.getMonth();
+    }).reverse();
+  }
+
+  // date range label
+  if (items.length > 0) {
+    const first = new Date(items[0].created_at);
+    const last  = new Date(items[items.length - 1].created_at);
+    const fmt   = d => `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()}`;
+    capsuleDateRange.textContent = `${fmt(first)} - ${fmt(last)}`;
+  } else {
+    capsuleDateRange.textContent = '';
+  }
+
+  if (items.length === 0) {
+    // draw empty state on canvas
+    const W = 600, H = 400;
+    capsuleCanvas.width = W; capsuleCanvas.height = H;
+    const ctx = capsuleCanvas.getContext('2d');
+    ctx.fillStyle = '#f5ede0';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(44,31,20,0.25)';
+    ctx.font = '20px Mitr, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('ยังไม่มีรูปในเดือนนี้', W/2, H/2);
+    capsuleDataUrl = null;
+    return;
+  }
+
+  // pick up to 9 photos (shuffle for variety each time)
+  const shuffled = [...items].sort(() => Math.random() - 0.5);
+  const picks    = shuffled.slice(0, Math.min(9, shuffled.length));
+
+  // load images
+  const loadImg = src => new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload  = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+  const imgs = (await Promise.all(picks.map(p => loadImg(p.image_url)))).filter(Boolean);
+
+  // generate collage layout based on count
+  capsuleDataUrl = buildCollage(imgs, mn);
+}
+
+function buildCollage(imgs, monthName) {
+  const W   = 600;
+  const PAD = 12;   // outer padding
+  const GAP = 6;    // gap between cells
+  const BG  = '#F5EDE0';
+
+  const n = imgs.length;
+
+  // choose layout: list of {x,y,w,h} as fractions of inner area
+  const inner = W - PAD * 2;
+  let layout = [];
+
+  if (n === 1) {
+    layout = [{ x:0, y:0, w:1, h:1 }];
+  } else if (n === 2) {
+    layout = [
+      { x:0,   y:0, w:0.5, h:1 },
+      { x:0.5, y:0, w:0.5, h:1 },
+    ];
+  } else if (n === 3) {
+    layout = [
+      { x:0,   y:0,   w:0.6,  h:1   },
+      { x:0.6, y:0,   w:0.4,  h:0.5 },
+      { x:0.6, y:0.5, w:0.4,  h:0.5 },
+    ];
+  } else if (n === 4) {
+    layout = [
+      { x:0,   y:0,   w:0.5, h:0.5 },
+      { x:0.5, y:0,   w:0.5, h:0.5 },
+      { x:0,   y:0.5, w:0.5, h:0.5 },
+      { x:0.5, y:0.5, w:0.5, h:0.5 },
+    ];
+  } else if (n === 5) {
+    layout = [
+      { x:0,    y:0,    w:0.6,  h:0.55 },
+      { x:0.6,  y:0,    w:0.4,  h:0.55 },
+      { x:0,    y:0.55, w:0.33, h:0.45 },
+      { x:0.33, y:0.55, w:0.34, h:0.45 },
+      { x:0.67, y:0.55, w:0.33, h:0.45 },
+    ];
+  } else if (n === 6) {
+    layout = [
+      { x:0,    y:0,    w:0.5,  h:0.5  },
+      { x:0.5,  y:0,    w:0.25, h:0.5  },
+      { x:0.75, y:0,    w:0.25, h:0.5  },
+      { x:0,    y:0.5,  w:0.25, h:0.5  },
+      { x:0.25, y:0.5,  w:0.25, h:0.5  },
+      { x:0.5,  y:0.5,  w:0.5,  h:0.5  },
+    ];
+  } else {
+    // 7-9: big one top-left, rest fill grid
+    layout = [
+      { x:0,    y:0,    w:0.6,  h:0.55 },
+      { x:0.6,  y:0,    w:0.4,  h:0.275},
+      { x:0.6,  y:0.275,w:0.4,  h:0.275},
+      { x:0,    y:0.55, w:0.33, h:0.45 },
+      { x:0.33, y:0.55, w:0.34, h:0.45 },
+      { x:0.67, y:0.55, w:0.33, h:0.45 },
+    ];
+    // add extra cells if n > 6 (up to 9) — shrink to 3-col bottom rows
+    if (n >= 7) layout.push({ x:0, y:0, w:0, h:0 }); // placeholder, handled below
+    // simpler: just use up to 6 for layout, ignore rest
+  }
+
+  // cap to layout slots
+  const usedImgs = imgs.slice(0, layout.length);
+
+  // compute canvas height from tallest layout
+  const maxBottom = layout.reduce((m, c) => Math.max(m, c.y + c.h), 0);
+  const H = Math.round(inner * maxBottom) + PAD * 2;
+
+  capsuleCanvas.width  = W;
+  capsuleCanvas.height = H;
+  const ctx = capsuleCanvas.getContext('2d');
+
+  // background
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, W, H);
+
+  usedImgs.forEach((img, i) => {
+    const cell = layout[i];
+    const cx = PAD + cell.x * inner + (i > 0 ? GAP/2 : 0);
+    const cy = PAD + cell.y * (H - PAD*2) + (cell.y > 0 ? GAP/2 : 0);
+    const cw = cell.w * inner - GAP/2;
+    const ch = cell.h * (H - PAD*2) - GAP/2;
+
+    // cover-fit
+    const scale = Math.max(cw / img.width, ch / img.height);
+    const sw = cw / scale, sh = ch / scale;
+    const sx = (img.width - sw) / 2, sy = (img.height - sh) / 2;
+
+    ctx.save();
+    // rounded clip
+    const r = 8;
+    ctx.beginPath();
+    ctx.moveTo(cx + r, cy);
+    ctx.lineTo(cx + cw - r, cy);
+    ctx.quadraticCurveTo(cx + cw, cy, cx + cw, cy + r);
+    ctx.lineTo(cx + cw, cy + ch - r);
+    ctx.quadraticCurveTo(cx + cw, cy + ch, cx + cw - r, cy + ch);
+    ctx.lineTo(cx + r, cy + ch);
+    ctx.quadraticCurveTo(cx, cy + ch, cx, cy + ch - r);
+    ctx.lineTo(cx, cy + r);
+    ctx.quadraticCurveTo(cx, cy, cx + r, cy);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(img, sx, sy, sw, sh, cx, cy, cw, ch);
+    ctx.restore();
+  });
+
+  return capsuleCanvas.toDataURL('image/jpeg', 0.92);
+}
+
+// save collage to localStorage / Supabase
+capsuleSaveBtn.addEventListener('click', async () => {
+  if (!capsuleDataUrl) { showToast('ยังไม่มีรูปให้บันทึก'); return; }
+  const now      = new Date().toISOString();
+  const fileName = `capsule_${Date.now()}.jpg`;
+
+  const blob = await (await fetch(capsuleDataUrl)).blob();
+
+  if (db) {
+    try {
+      const { error: upErr } = await db.storage.from('memory-files')
+        .upload(fileName, blob, { contentType: 'image/jpeg', upsert: false });
+      if (upErr) throw upErr;
+      const { data: urlData } = db.storage.from('memory-files').getPublicUrl(fileName);
+      await db.from('memories').insert([{ image_url: urlData.publicUrl, file_name: fileName, created_at: now }]);
+      showToast('💊 บันทึก Capsule แล้ว!');
+    } catch(e) { showToast('❌ ' + e.message); }
+  } else {
+    const stored = JSON.parse(localStorage.getItem('capturow_memories') || '[]');
+    stored.unshift({ image_url: capsuleDataUrl, created_at: now });
+    if (stored.length > 50) stored.length = 50;
+    localStorage.setItem('capturow_memories', JSON.stringify(stored));
+    showToast('💊 บันทึก Capsule แล้ว!');
+  }
+});
+
+// open collage in new tab
+capsuleOpenBtn.addEventListener('click', () => {
+  if (!capsuleDataUrl) { showToast('ยังไม่มีรูปให้เปิด'); return; }
+  window.open(capsuleDataUrl, '_blank');
+});
 
 // ── GUEST MODAL ──────────────────────────────────────────────
 const guestBtn   = document.getElementById('guestBtn');
