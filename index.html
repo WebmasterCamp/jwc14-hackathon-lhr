@@ -152,37 +152,55 @@
       color:rgba(255,255,255,0.25); font-family:'Mitr',sans-serif; font-size:14px;
     }
 
-    /* GUEST MODAL */
+    /* TAG MODE — 9-grid viewfinder */
+    .tag-grid-overlay {
+      position:absolute; inset:0; z-index:6;
+      display:none; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
+      gap:2px; padding:2px; background:transparent;
+    }
+    .tag-grid-overlay.active { display:grid; }
+    .tag-cell {
+      background:rgba(0,0,0,0.75); border-radius:6px;
+      overflow:hidden; position:relative; cursor:pointer;
+      transition:opacity 0.15s;
+    }
+    .tag-cell.filled { background:#000; }
+    .tag-cell img { width:100%; height:100%; object-fit:cover; display:block; }
+    .tag-cell-num {
+      position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+      color:rgba(255,255,255,0.15); font-size:22px; font-family:'Dancing Script',cursive;
+      pointer-events:none;
+    }
+    .tag-cell.next-target { outline:2px solid rgba(255,255,255,0.5); }
     .guest-modal-backdrop {
       position:absolute; inset:0; z-index:100;
       display:none; align-items:flex-start; justify-content:center;
-      padding-top:70px;
+      padding-top:64px;
     }
     .guest-modal-backdrop.open { display:flex; }
     .guest-modal {
-      background:rgba(80,60,40,0.92); backdrop-filter:blur(16px);
-      border-radius:28px; padding:28px 24px 24px;
+      background:rgba(70,52,34,0.93); backdrop-filter:blur(16px);
+      border-radius:28px; padding:20px;
       width:calc(100% - 40px); max-width:340px;
-      display:flex; flex-direction:column; align-items:center; gap:20px;
+      display:flex; flex-direction:column; align-items:center; gap:14px;
       box-shadow:0 8px 40px rgba(0,0,0,0.5);
       animation:modalIn 0.25s cubic-bezier(0.34,1.56,0.64,1);
     }
     @keyframes modalIn { from{opacity:0;transform:scale(0.88) translateY(-12px)} to{opacity:1;transform:scale(1) translateY(0)} }
-    .guest-modal-title {
-      font-family:'Dancing Script',cursive; font-size:28px; font-weight:700;
-      color:#2C1F14; background:var(--accent-pink);
-      padding:6px 32px; border-radius:999px; letter-spacing:1px;
-    }
-    .guest-modal-btns { display:grid; grid-template-columns:1fr 1fr; gap:14px; width:100%; }
-    .guest-modal-btn {
-      border:none; border-radius:20px; padding:22px 0;
-      font-family:'Dancing Script',cursive; font-size:26px; font-weight:700;
+    .guest-tag-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; width:100%; }
+    .guest-tag-btn {
+      border:none; border-radius:16px; padding:18px 0;
+      font-family:'Dancing Script',cursive; font-size:20px; font-weight:700;
       color:white; cursor:pointer; transition:transform 0.12s, filter 0.12s;
-      letter-spacing:1px;
+      text-shadow:0 1px 3px rgba(0,0,0,0.25);
     }
-    .guest-modal-btn:active { transform:scale(0.94); filter:brightness(0.9); }
-    .guest-modal-btn.random { background:#9B7FD4; }
-    .guest-modal-btn.choose { background:#F4A89A; color:#2C1F14; }
+    .guest-tag-btn:active { transform:scale(0.93); filter:brightness(0.88); }
+    .guest-tag-btn.square   { background:#B8935A; }
+    .guest-tag-btn.circle   { background:#8BBF3F; }
+    .guest-tag-btn.view     { background:#2E8B6E; }
+    .guest-tag-btn.beach    { background:#29B6D8; }
+    .guest-tag-btn.building { background:#D4A882; color:#2C1F14; }
+    .guest-tag-btn.flower   { background:#B07FCC; }
   </style>
 </head>
 <body>
@@ -191,12 +209,12 @@
   <!-- PAGE 1: CAMERA -->
   <div class="page active" id="pageCam">
     <div class="top-bar">
-      <span class="page-pill">capturow</span>
-      <button class="profile-btn" id="guestBtn">
+      <span class="page-pill" id="guestBtn" style="cursor:pointer;">guest</span>
+      <div class="profile-btn" style="pointer-events:none; cursor:default;">
         <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
           <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/>
         </svg>
-      </button>
+      </div>
     </div>
     <div class="scroll-area">
       <div class="viewfinder-wrap">
@@ -211,7 +229,8 @@
         <video id="webcam" autoplay playsinline muted></video>
         <div class="cam-status" id="camStatus"></div>
         <div class="flash-overlay" id="flashOverlay"></div>
-
+        <!-- 9-cell tag grid (hidden until tag selected) -->
+        <div class="tag-grid-overlay" id="tagGridOverlay"></div>
       </div>
       <div class="controls-bar">
         <button class="flash-btn" id="flashBtn"><span>⚡</span></button>
@@ -305,10 +324,13 @@
   <!-- GUEST MODAL -->
   <div class="guest-modal-backdrop" id="guestModal">
     <div class="guest-modal">
-      <div class="guest-modal-title">guest</div>
-      <div class="guest-modal-btns">
-        <button class="guest-modal-btn random" id="guestRandomBtn">random</button>
-        <button class="guest-modal-btn choose" id="guestChooseBtn">choose</button>
+      <div class="guest-tag-grid">
+        <button class="guest-tag-btn square">square</button>
+        <button class="guest-tag-btn circle">circle</button>
+        <button class="guest-tag-btn view">view</button>
+        <button class="guest-tag-btn beach">beach</button>
+        <button class="guest-tag-btn building">building</button>
+        <button class="guest-tag-btn flower">flower</button>
       </div>
     </div>
   </div>

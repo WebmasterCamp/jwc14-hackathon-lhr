@@ -31,11 +31,18 @@ const monthLabel      = document.getElementById('monthLabel');
 const monthBack       = document.getElementById('monthBack');
 const monthFwd        = document.getElementById('monthFwd');
 const capsuleBtn      = document.getElementById('capsuleBtn');
+const tagGridOverlay  = document.getElementById('tagGridOverlay');
+const pillLabel       = document.getElementById('guestBtn'); // the pill span
 
 // ── STATE ───────────────────────────────────────────────────
 let stream      = null;
 let isSaving    = false;
 let currentDate = new Date();
+
+// tag-mode state
+let tagMode       = false;   // true when a tag is active
+let tagSlots      = [];      // array of 9 dataURLs or null
+let tagNextSlot   = 0;       // index of next empty slot (0-8)
 
 // ── TOAST ───────────────────────────────────────────────────
 let toastTimer = null;
@@ -101,6 +108,26 @@ snapBtn.addEventListener('click', async () => {
   ctx.scale(-1, 1);
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+  // ── TAG MODE: fill next slot ────────────────────────────
+  if (tagMode) {
+    if (tagNextSlot >= 9) {
+      showToast('✅ ครบ 9 รูปแล้ว!');
+      resetShutter();
+      return;
+    }
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    tagSlots[tagNextSlot] = dataUrl;
+    renderTagGrid();
+    tagNextSlot++;
+    if (tagNextSlot >= 9) {
+      showToast('🎉 ครบ 9 รูปแล้ว!');
+      snapBtn.disabled = true;
+    }
+    resetShutter();
+    return;
+  }
+
+  // ── NORMAL MODE: save to storage ───────────────────────
   canvas.toBlob(async (blob) => {
     if (!blob) { showToast('❌ ดึงรูปภาพไม่ได้'); resetShutter(); return; }
 
@@ -147,6 +174,44 @@ function resetShutter() {
 }
 
 // ── COLOR HUNT (removed) ─────────────────────────────────────
+
+// ── TAG MODE HELPERS ─────────────────────────────────────────
+function enterTagMode(tagName) {
+  tagMode     = true;
+  tagSlots    = new Array(9).fill(null);
+  tagNextSlot = 0;
+
+  // update pill label
+  pillLabel.textContent = tagName;
+
+  // show grid overlay
+  tagGridOverlay.classList.add('active');
+  renderTagGrid();
+
+  // enable shutter if camera is live
+  if (stream) snapBtn.disabled = false;
+}
+
+function renderTagGrid() {
+  tagGridOverlay.innerHTML = '';
+  for (let i = 0; i < 9; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'tag-cell' + (tagSlots[i] ? ' filled' : '');
+    if (i === tagNextSlot && tagNextSlot < 9) cell.classList.add('next-target');
+
+    if (tagSlots[i]) {
+      const img = document.createElement('img');
+      img.src = tagSlots[i];
+      cell.appendChild(img);
+    } else {
+      const num = document.createElement('div');
+      num.className = 'tag-cell-num';
+      num.textContent = i + 1;
+      cell.appendChild(num);
+    }
+    tagGridOverlay.appendChild(cell);
+  }
+}
 
 // ── CAMERA STRIP (2 latest) ──────────────────────────────────
 async function loadCameraStrip() {
@@ -276,6 +341,27 @@ async function loadGalleryPage() {
 }
 
 capsuleBtn.addEventListener('click', () => showToast('💊 Capsule — coming soon!'));
+
+// ── GUEST MODAL ──────────────────────────────────────────────
+const guestBtn   = document.getElementById('guestBtn');
+const guestModal = document.getElementById('guestModal');
+
+guestBtn.addEventListener('click', () => {
+  guestModal.classList.toggle('open');
+});
+
+// close when tapping backdrop (outside the card)
+guestModal.addEventListener('click', (e) => {
+  if (e.target === guestModal) guestModal.classList.remove('open');
+});
+
+// tag buttons — enter tag mode
+guestModal.querySelectorAll('.guest-tag-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    guestModal.classList.remove('open');
+    enterTagMode(btn.textContent.trim());
+  });
+});
 
 // ── INIT ─────────────────────────────────────────────────────
 loadCameraStrip();
