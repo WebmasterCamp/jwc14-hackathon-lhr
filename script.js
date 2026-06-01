@@ -146,8 +146,8 @@ function resetShutter() {
   snapBtn.disabled = false;
 }
 
-// ── COLOR HUNT placeholder ───────────────────────────────────
-colorHuntBtn.addEventListener('click', () => { /* no action */ });
+// ── COLOR HUNT → navigate to Gallery ────────────────────────
+colorHuntBtn.addEventListener('click', () => showPage('gallery'));
 
 // ── CAMERA STRIP (2 latest) ──────────────────────────────────
 async function loadCameraStrip() {
